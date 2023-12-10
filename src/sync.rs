@@ -52,9 +52,21 @@ impl RawPacketStream {
         Ok(RawPacketStream(fd as RawFd))
     }
 
+    pub fn new_with_ethertype(ethertype: u16) -> Result<Self> {
+        let fd = unsafe { socket(AF_PACKET, SOCK_RAW, i32::from((ethertype as u16).to_be())) };
+        if fd == -1 {
+            return Err(Error::last_os_error());
+        }
+        Ok(RawPacketStream(fd as RawFd))
+    }
+
     /// Bind socket to an interface (by name).
     pub fn bind(&mut self, name: &str) -> Result<()> {
         self.bind_internal(name)
+    }
+
+    pub fn bind_with_ethertype(&mut self, name: &str, ethertype: u16) -> Result<()> {
+        self.bind_internal_with_ethertype(name, ethertype)
     }
 
     // should take an &mut to unsure not just anyone can call it,
@@ -64,12 +76,34 @@ impl RawPacketStream {
         self.bind_by_index(idx)
     }
 
+    pub(crate) fn bind_internal_with_ethertype(&self, name: &str, ethertype: u16) -> Result<()> {
+        let idx = index_by_name(name)?;
+        self.bind_by_index_with_ethertype(idx, ethertype)
+    }
+
     fn bind_by_index(&self, ifindex: i32) -> Result<()> {
         unsafe {
             let mut ss: sockaddr_storage = std::mem::zeroed();
             let sll: *mut sockaddr_ll = &mut ss as *mut sockaddr_storage as *mut sockaddr_ll;
             (*sll).sll_family = AF_PACKET as u16;
             (*sll).sll_protocol = (ETH_P_ALL as u16).to_be();
+            (*sll).sll_ifindex = ifindex;
+
+            let sa = (&ss as *const libc::sockaddr_storage) as *const libc::sockaddr;
+            let res = libc::bind(self.0, sa, std::mem::size_of::<sockaddr_ll>() as u32);
+            if res == -1 {
+                return Err(Error::last_os_error());
+            }
+        }
+        Ok(())
+    }
+
+    fn bind_by_index_with_ethertype(&self, ifindex: i32, ethertype: u16) -> Result<()> {
+        unsafe {
+            let mut ss: sockaddr_storage = std::mem::zeroed();
+            let sll: *mut sockaddr_ll = &mut ss as *mut sockaddr_storage as *mut sockaddr_ll;
+            (*sll).sll_family = AF_PACKET as u16;
+            (*sll).sll_protocol = (ethertype as u16).to_be();
             (*sll).sll_ifindex = ifindex;
 
             let sa = (&ss as *const libc::sockaddr_storage) as *const libc::sockaddr;
