@@ -52,6 +52,8 @@ impl RawPacketStream {
         Ok(RawPacketStream(fd as RawFd))
     }
 
+    //TODO this could be done more elegantly by adding a parameter new(Option<u16>) and bind(name, Option<u16>)
+    //TODO make contact with original authors if they even want to have this improvement
     pub fn new_with_ethertype(ethertype: u16) -> Result<Self> {
         let fd = unsafe { socket(AF_PACKET, SOCK_RAW, i32::from((ethertype as u16).to_be())) };
         if fd == -1 {
